@@ -1,0 +1,39 @@
+var s2 = ee.ImageCollection('COPERNICUS/S2_HARMONIZED');
+var geometry = ee.Geometry.Point([34.7680, 0.0917]);
+    
+var filteredS2 = s2
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 35))
+  .filter(ee.Filter.date('2019-01-01', '2020-01-01'))
+  .filter(ee.Filter.bounds(geometry));
+
+// Sort the collection and pick the most cloudy image
+var filteredS2Sorted = filteredS2.sort({
+  property: 'CLOUDY_PIXEL_PERCENTAGE',
+  ascending: false
+});
+
+var image = filteredS2Sorted.first();
+
+var rgbVis = {
+  min: 0.0,
+  max: 3000,
+  bands: ['B4', 'B3', 'B2'],
+};
+
+Map.centerObject(image);
+Map.addLayer(image, rgbVis, 'Full Image', false);
+
+// Write a function for Cloud masking
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0).and(
+             qa.bitwiseAnd(cirrusBitMask).eq(0));
+  return image.updateMask(mask)
+      .select('B.*')
+      .copyProperties(image, ['system:time_start']);
+}
+
+var imageMasked = ee.Image(maskS2clouds(image));
+Map.addLayer(imageMasked, rgbVis, 'Masked Image');
